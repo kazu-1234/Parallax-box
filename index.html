@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Parallax Cinema v4.3.0</title>
+    <title>Parallax World v6.0.0</title>
     <style>
-        /* * バージョン: v4.3.0
-         * 変更点: PCでGYROボタンを非表示にし、カメラ(FACE)操作を正式サポート
+        /* * バージョン: v6.0.0
+         * 変更点: シネマモード(YouTube機能)を削除し、BOXとDANCEモードのみに軽量化
          */
         body {
             margin: 0;
@@ -27,16 +27,14 @@
             overflow: hidden;
         }
 
-        #css-container, #webgl-container {
+        #webgl-container {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
+            z-index: 1;
         }
-
-        #css-container { z-index: 0; }
-        #webgl-container { z-index: 1; pointer-events: none; }
 
         /* --- UI Overlay --- */
         #ui-layer {
@@ -172,28 +170,6 @@
         }
         #reset-sensitivity:hover { color: white; background: #555; }
 
-        #cinema-ui {
-            position: absolute;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 90%;
-            max-width: 500px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            border-radius: 15px;
-            border: 1px solid #333;
-            display: none;
-            pointer-events: auto;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .input-row { display: flex; gap: 10px; }
-        #yt-input { flex: 1; background: #222; border: 1px solid #555; color: white; padding: 10px; border-radius: 8px; font-size: 14px; }
-        #yt-load-btn { background: #ff0000; color: white; border: none; padding: 0 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        #yt-load-btn:hover { background: #ff3333; }
-
         #start-overlay {
             position: absolute;
             top: 0;
@@ -256,7 +232,7 @@
 <body>
 
     <div id="container">
-        <div id="css-container"></div>
+        <!-- 3Dモデルレイヤー -->
         <div id="webgl-container"></div>
     </div>
 
@@ -268,7 +244,6 @@
             <div class="control-group" id="scene-group">
                 <button class="ctrl-btn active" onclick="switchScene('box')">📦 BOX</button>
                 <button class="ctrl-btn" onclick="switchScene('dance')">🤖 DANCE</button>
-                <button class="ctrl-btn" onclick="switchScene('cinema')">🎬 CINEMA</button>
             </div>
             
             <div class="control-group" id="mode-group">
@@ -288,15 +263,6 @@
             <button id="reset-sensitivity" onclick="resetSensitivity()">RESET</button>
         </div>
 
-        <!-- Cinema Mode UI -->
-        <div id="cinema-ui">
-            <div style="color:#ccc; font-size:12px; margin-bottom:5px;">YouTube URL:</div>
-            <div class="input-row">
-                <input type="text" id="yt-input" placeholder="https://youtu.be/..." value="https://www.youtube.com/watch?v=Lx7O_e417RE">
-                <button id="yt-load-btn">LOAD</button>
-            </div>
-        </div>
-
         <div id="camera-preview">
             <canvas id="debug-canvas"></canvas>
         </div>
@@ -307,7 +273,7 @@
         <div class="overlay-content">
             <h1>Parallax World</h1>
             <p style="color:#ccc; margin-bottom: 5px;">
-                箱庭、ダンス、そして映画館。<br>
+                箱庭とロボットダンス。<br>
                 奥行きのある空間体験を。
             </p>
             
@@ -325,7 +291,7 @@
     <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS3DRenderer.js"></script>
+    <!-- CSS3DRendererは不要になったため削除 -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -333,8 +299,8 @@
 
     <script>
         /**
-         * バージョン: v4.3.0
-         * 機能: PCでGYRO非表示、FACEモード対応
+         * バージョン: v6.0.0
+         * 機能: シネマモード削除による軽量化。Box/Danceモードのみサポート。
          */
 
         // --- Configuration ---
@@ -364,17 +330,21 @@
         let virtualCursor = { x: 0, y: 0 }; 
         let keysPressed = {};
 
-        // Device Check
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
         // Three.js
-        let scene, camera, renderer, cssRenderer;
+        let scene, camera, renderer;
         let roomGroup;
+        
+        // Objects
         let boxObjects = [];
         let robotModel = null;
         let mixer = null;
-        let youtubeObj = null;
         
+        // Animations
+        let robotActions = {};
+        let activeAction = null;
+
         // MediaPipe
         let faceMesh, cameraUtils;
         let isFaceMeshLoaded = false;
@@ -388,7 +358,6 @@
             detectDeviceAndSetMode();
             initThreeJS();
             setupInputEvents();
-            setupCinemaUI();
             setupSettingsUI();
 
             document.getElementById('main-start-btn').addEventListener('click', async () => {
@@ -406,8 +375,9 @@
                 setTimeout(()=> overlay.style.display = 'none', 500);
                 isStarted = true;
 
-                // モバイルでかつGYROモードの場合のみ許可を求める
                 if (currentMode === 'gyro' && isMobile) requestGyroPermission();
+                
+                switchScene('box');
             });
         };
 
@@ -417,22 +387,16 @@
             const gyroBtn = document.getElementById('btn-gyro');
             
             if (isMobile) {
-                // スマホの場合
                 currentMode = 'gyro';
-                // スマホは全ボタン表示
                 gyroBtn.style.display = 'block';
-                
                 guide.innerHTML = `
                     📱 <b>Mobile Mode</b><br>
                     傾き(Gyro) や タッチ操作で視点移動<br>
                     <span style="font-size:11px; opacity:0.8;">※カメラ許可で顔認識モードも利用可</span>
                 `;
             } else {
-                // PCの場合
                 currentMode = 'touch';
-                // PCはGYROボタンを隠す
                 gyroBtn.style.display = 'none';
-
                 guide.innerHTML = `
                     💻 <b>PC Mode</b><br>
                     マウス移動 / キーボード操作 / <b>Webカメラ(Face)</b><br>
@@ -489,24 +453,17 @@
         }
 
         function switchScene(sceneType) {
-            if (sceneType === currentScene) return;
             currentScene = sceneType;
 
             document.querySelectorAll('#scene-group .ctrl-btn').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
+            const btns = document.querySelectorAll('#scene-group .ctrl-btn');
+            if(sceneType === 'box') btns[0].classList.add('active');
+            if(sceneType === 'dance') btns[1].classList.add('active');
+
+            if(roomGroup) roomGroup.visible = true; // Box/Danceは同じ部屋を使う
 
             boxObjects.forEach(cube => cube.visible = (sceneType === 'box'));
             if (robotModel) robotModel.visible = (sceneType === 'dance');
-
-            const cinemaUI = document.getElementById('cinema-ui');
-            const iframe = document.getElementById('youtube-iframe');
-            if (sceneType === 'cinema') {
-                cinemaUI.style.display = 'flex';
-                if(iframe) iframe.style.visibility = 'visible';
-            } else {
-                cinemaUI.style.display = 'none';
-                if(iframe) iframe.style.visibility = 'hidden';
-            }
         }
 
         // --- Three.js Setup ---
@@ -518,11 +475,6 @@
             renderer.shadowMap.enabled = true;
             container.appendChild(renderer.domElement);
 
-            const cssContainer = document.getElementById('css-container');
-            cssRenderer = new THREE.CSS3DRenderer();
-            cssRenderer.setSize(window.innerWidth, window.innerHeight);
-            cssContainer.appendChild(cssRenderer.domElement);
-
             scene = new THREE.Scene();
             scene.fog = new THREE.FogExp2(0x050505, 0.001);
 
@@ -531,18 +483,21 @@
 
             createRoom();
 
-            const ambientLight = new THREE.AmbientLight(0x404040, 2);
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
             scene.add(ambientLight);
-            const spotLight = new THREE.SpotLight(0xffffff, 1.5);
+
+            const spotLight = new THREE.SpotLight(0xffffff, 2.0);
             spotLight.position.set(0, 400, 400);
             spotLight.angle = Math.PI / 3;
             spotLight.penumbra = 0.5;
             spotLight.castShadow = true;
             scene.add(spotLight);
-            const pLight1 = new THREE.PointLight(0x00d2ff, 1.5, 1000);
+
+            const pLight1 = new THREE.PointLight(0x00d2ff, 1.5, 1200);
             pLight1.position.set(-300, 100, 0);
             scene.add(pLight1);
-            const pLight2 = new THREE.PointLight(0xff0055, 1.5, 1000);
+            
+            const pLight2 = new THREE.PointLight(0xff0055, 1.5, 1200);
             pLight2.position.set(300, 100, 0);
             scene.add(pLight2);
 
@@ -596,53 +551,68 @@
                 roomGroup.add(cube);
                 boxObjects.push(cube);
             }
-
-            const div = document.createElement('div');
-            div.style.width = '800px'; div.style.height = '450px'; div.style.backgroundColor = '#000';
-            const iframe = document.createElement('iframe');
-            iframe.id = 'youtube-iframe';
-            iframe.style.width = '100%'; iframe.style.height = '100%'; iframe.style.border = '0';
-            iframe.src = 'https://www.youtube.com/embed/Lx7O_e417RE?rel=0&enablejsapi=1'; 
-            div.appendChild(iframe);
-            const object = new THREE.CSS3DObject(div);
-            object.position.set(0, 0, -d/2 + 10);
-            object.scale.set(1.2, 1.2, 1.2); 
-            youtubeObj = object;
-            scene.add(object);
-            iframe.style.visibility = 'hidden';
         }
 
-        // --- Robot ---
+        // --- Robot (RobotExpressive) ---
         function loadRobotModel() {
             return new Promise((resolve) => {
                 const loader = new THREE.GLTFLoader();
-                loader.load('https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb', (gltf) => {
+                const url = 'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
+                
+                loader.load(url, (gltf) => {
                     robotModel = gltf.scene;
-                    robotModel.scale.set(40, 40, 40);
-                    robotModel.position.set(0, -150, -100);
+                    
+                    robotModel.scale.set(50, 50, 50);
+                    robotModel.position.set(0, -180, -100);
+                    
                     robotModel.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+                    
                     mixer = new THREE.AnimationMixer(robotModel);
-                    const clip = THREE.AnimationClip.findByName(gltf.animations, 'Dance');
-                    if (clip) mixer.clipAction(clip).play();
+                    
+                    const clips = gltf.animations;
+                    const actionNames = ['Dance', 'Jump', 'Punch', 'Running'];
+                    
+                    actionNames.forEach(name => {
+                        const clip = THREE.AnimationClip.findByName(clips, name);
+                        if(clip) robotActions[name] = mixer.clipAction(clip);
+                    });
+
+                    function playRandomAction() {
+                        const keys = Object.keys(robotActions);
+                        if (keys.length === 0) return;
+                        
+                        const randKey = keys[Math.floor(Math.random() * keys.length)];
+                        const nextAction = robotActions[randKey];
+                        
+                        if (activeAction && activeAction !== nextAction) {
+                            activeAction.fadeOut(0.5);
+                        }
+                        
+                        nextAction.reset();
+                        
+                        // Jumpのみスロー
+                        if (randKey === 'Jump') {
+                            nextAction.setEffectiveTimeScale(0.75);
+                        } else {
+                            nextAction.setEffectiveTimeScale(1.5);
+                        }
+
+                        nextAction.setEffectiveWeight(1);
+                        nextAction.fadeIn(0.5);
+                        nextAction.play();
+                        
+                        activeAction = nextAction;
+
+                        setTimeout(playRandomAction, 3000 + Math.random() * 2000);
+                    }
+
+                    playRandomAction();
+                    
                     robotModel.visible = false;
                     roomGroup.add(robotModel);
                     resolve();
                 }, undefined, (e) => { console.error(e); resolve(); });
             });
-        }
-
-        // --- Cinema UI ---
-        function setupCinemaUI() {
-            document.getElementById('yt-load-btn').addEventListener('click', () => {
-                const input = document.getElementById('yt-input').value;
-                const videoId = extractVideoID(input);
-                if (videoId) document.getElementById('youtube-iframe').src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
-                else alert("無効なYouTube URLです。");
-            });
-        }
-        function extractVideoID(url) {
-            const m = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
-            return (m && m[2].length === 11) ? m[2] : null;
         }
 
         // --- Inputs ---
@@ -755,21 +725,19 @@
             if (currentScene === 'box') {
                 boxObjects.forEach(cube => { cube.rotation.x += cube.userData.rotX; cube.rotation.y += cube.userData.rotY; });
             }
-            roomGroup.position.x = -currentPos.x * 0.2;
-            roomGroup.position.y = -currentPos.y * 0.2;
-            if (youtubeObj) {
-                youtubeObj.position.x = roomGroup.position.x;
-                youtubeObj.position.y = roomGroup.position.y;
+            
+            if(roomGroup) {
+                roomGroup.position.x = -currentPos.x * 0.2;
+                roomGroup.position.y = -currentPos.y * 0.2;
             }
+
             renderer.render(scene, camera);
-            cssRenderer.render(scene, camera);
         }
 
         function onResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            cssRenderer.setSize(window.innerWidth, window.innerHeight);
         }
 
     </script>
