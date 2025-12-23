@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D Depth Box v3.2.1</title>
+    <style>
+        /* * バージョン: v3.2.1
+         * 変更点: 壁のメッシュサイズを巨大化し、視点移動時の見切れ（範囲外）を防止
+         * 部屋サイズ自体も少し拡大
+         */
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            color: white;
+            touch-action: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* --- UI Overlay --- */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #mode-switch {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(20, 20, 30, 0.8);
+            border: 1px solid #444;
+            border-radius: 30px;
+            padding: 5px;
+            display: flex;
+            gap: 5px;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+
+        .mode-btn {
+            background: transparent;
+            border: none;
+            color: #888;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .mode-btn.active {
+            background: #00d2ff;
+            color: #000;
+            box-shadow: 0 0 10px rgba(0, 210, 255, 0.5);
+        }
+
+        #start-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            pointer-events: auto;
+            transition: opacity 0.5s;
+        }
+
+        .overlay-content {
+            text-align: center;
+            padding: 20px;
+            max-width: 90%;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #00d2ff, #00ffaa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.desc {
+            color: #ccc;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        .action-btn {
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            background: linear-gradient(90deg, #00d2ff, #0077ff);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 119, 255, 0.4);
+            transition: transform 0.2s;
+            font-weight: bold;
+        }
+
+        .action-btn:active {
+            transform: scale(0.95);
+        }
+
+        #camera-preview-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 100px;
+            height: 133px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #333;
+            background: #000;
+            display: none;
+            pointer-events: auto;
+            transform: scaleX(-1);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+        }
+
+        #debug-canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        #loading {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #00d2ff;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div id="mode-switch">
+            <button class="mode-btn active" id="btn-gyro" onclick="switchMode('gyro')">GYRO</button>
+            <button class="mode-btn" id="btn-touch" onclick="switchMode('touch')">TOUCH</button>
+            <button class="mode-btn" id="btn-face" onclick="switchMode('face')">FACE</button>
+        </div>
+
+        <div id="camera-preview-container">
+            <canvas id="debug-canvas"></canvas>
+        </div>
+    </div>
+
+    <div id="start-overlay">
+        <div class="overlay-content">
+            <h1>Parallax Box</h1>
+            <p class="desc">
+                画面の中に箱庭があるような<br>
+                奥行き体験を提供します。
+            </p>
+            <button class="action-btn" id="main-start-btn">START</button>
+            <div id="loading">Loading Models...</div>
+        </div>
+    </div>
+
+    <video id="input-video" style="display:none;" playsinline webkit-playsinline></video>
+
+    <!-- ライブラリ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <script>
+        /**
+         * バージョン: v3.2.1
+         * 変更点: 部屋サイズ拡張、壁メッシュの巨大化（見切れ防止）
+         */
+
+        // --- Configuration ---
+        const CONFIG = {
+            sensitivity: {
+                gyro: { x: 30, y: 30 }, // 部屋が広くなった分、少し感度を上げる
+                face: { x: 1200, y: 1000 },
+                touch: { x: 500, y: 500 }
+            },
+            smoothing: 0.1,
+            // 部屋の設定（壁までの距離）
+            roomSize: 500, // 320 -> 500 に拡大
+            depth: 600     // 400 -> 600 に拡大
+        };
+
+        // --- Global Variables ---
+        let currentMode = 'gyro';
+        let isStarted = false;
+        let isFaceMeshLoaded = false;
+        
+        let targetPos = { x: 0, y: 0 };
+        let currentPos = { x: 0, y: 0 };
+
+        let scene, camera, renderer;
+        let roomGroup, floatingCubes = [];
+
+        let faceMesh, cameraUtils;
+        const videoElement = document.getElementById('input-video');
+        const debugCanvas = document.getElementById('debug-canvas');
+        const debugCtx = debugCanvas.getContext('2d');
+
+        // --- Initialization ---
+        window.onload = () => {
+            initThreeJS();
+            setupInputEvents();
+
+            document.getElementById('main-start-btn').addEventListener('click', async () => {
+                if (currentMode === 'gyro') {
+                    requestGyroPermission();
+                } else if (currentMode === 'face') {
+                    await startCameraMode();
+                } else {
+                    startDirectly();
+                }
+            });
+        };
+
+        function switchMode(mode) {
+            if (mode === currentMode) return;
+            currentMode = mode;
+
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${mode}`).classList.add('active');
+
+            const preview = document.getElementById('camera-preview-container');
+            preview.style.display = (mode === 'face' && isStarted) ? 'block' : 'none';
+
+            targetPos = { x: 0, y: 0 };
+
+            if (isStarted) {
+                if (mode === 'face' && !isFaceMeshLoaded) {
+                    startCameraMode();
+                }
+            }
+        }
+
+        function startDirectly() {
+            const overlay = document.getElementById('start-overlay');
+            overlay.style.opacity = '0';
+            setTimeout(()=> overlay.style.display = 'none', 500);
+            isStarted = true;
+        }
+
+        // --- Input Handling ---
+        function setupInputEvents() {
+            document.addEventListener('mousemove', (e) => {
+                if (currentMode === 'touch') handleInput(e.clientX, e.clientY);
+            });
+            document.addEventListener('touchmove', (e) => {
+                if (currentMode === 'touch' && e.touches.length > 0) {
+                    handleInput(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: false });
+        }
+
+        function handleInput(x, y) {
+            const normX = (x / window.innerWidth) * 2 - 1;
+            const normY = (y / window.innerHeight) * 2 - 1;
+            targetPos.x = normX * CONFIG.sensitivity.touch.x;
+            targetPos.y = -normY * CONFIG.sensitivity.touch.y;
+        }
+
+        // --- Three.js Setup ---
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            // 霧の設定：部屋が広くなったので開始距離を調整
+            scene.fog = new THREE.FogExp2(0x050505, 0.0015);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000); // 遠くまで見えるように
+            camera.position.set(0, 0, 300);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            createBoxRoom();
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0x404040, 3);
+            scene.add(ambientLight);
+
+            const spotLight = new THREE.SpotLight(0xffffff, 1.5);
+            spotLight.position.set(0, 400, 400);
+            spotLight.angle = Math.PI / 3;
+            spotLight.penumbra = 0.2;
+            spotLight.castShadow = true;
+            // 影の範囲を広げる
+            spotLight.shadow.camera.near = 10;
+            spotLight.shadow.camera.far = 2000;
+            scene.add(spotLight);
+
+            const pLight1 = new THREE.PointLight(0x00d2ff, 1, 800);
+            pLight1.position.set(-200, 0, 0);
+            scene.add(pLight1);
+            
+            const pLight2 = new THREE.PointLight(0xff0055, 1, 800);
+            pLight2.position.set(200, 0, 0);
+            scene.add(pLight2);
+
+            window.addEventListener('resize', onResize);
+            animate();
+        }
+
+        function createBoxRoom() {
+            roomGroup = new THREE.Group();
+            scene.add(roomGroup);
+
+            const s = CONFIG.roomSize; // 壁までの距離基準 (500)
+            const d = CONFIG.depth;    // 奥行き基準 (600)
+            
+            // 重要：壁の板自体のサイズ (視点移動しても端が見えないように巨大にする)
+            const wallSize = 5000; 
+
+            // マテリアル
+            const colorGridSub = 0x111111;
+            const colorWall = 0x0a0a0a;
+
+            const wallMat = new THREE.MeshPhongMaterial({
+                color: colorWall,
+                side: THREE.FrontSide,
+                shininess: 10
+            });
+
+            // グリッドヘルパー作成関数 (サイズを大きくして繰り返し表示)
+            function createGrid(size, divisions, color1, color2) {
+                const grid = new THREE.GridHelper(size, divisions, color1, color2);
+                return grid;
+            }
+
+            // --- 1. 奥の壁 (Back) ---
+            const backWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
+            backWall.position.z = -d/2; 
+            backWall.receiveShadow = true;
+            roomGroup.add(backWall);
+
+            const gridBack = createGrid(wallSize, 100, 0x00d2ff, colorGridSub);
+            gridBack.rotation.x = Math.PI / 2;
+            gridBack.position.z = -d/2 + 1;
+            roomGroup.add(gridBack);
+
+            // --- 2. 床 (Bottom) ---
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -s/2;
+            floor.receiveShadow = true;
+            roomGroup.add(floor);
+
+            const gridBottom = createGrid(wallSize, 100, 0x00ffaa, colorGridSub);
+            gridBottom.position.y = -s/2 + 1;
+            roomGroup.add(gridBottom);
+
+            // --- 3. 天井 (Top) ---
+            const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
+            ceiling.rotation.x = Math.PI / 2;
+            ceiling.position.y = s/2;
+            roomGroup.add(ceiling);
+            
+            const gridTop = createGrid(wallSize, 100, 0xff0055, colorGridSub);
+            gridTop.position.y = s/2 - 1;
+            roomGroup.add(gridTop);
+
+            // --- 4. 左壁 (Left) ---
+            const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
+            leftWall.rotation.y = Math.PI / 2;
+            leftWall.position.x = -s/2;
+            leftWall.receiveShadow = true;
+            roomGroup.add(leftWall);
+
+            const gridLeft = createGrid(wallSize, 100, 0x888888, colorGridSub);
+            gridLeft.rotation.z = Math.PI / 2;
+            gridLeft.position.x = -s/2 + 1;
+            roomGroup.add(gridLeft);
+
+            // --- 5. 右壁 (Right) ---
+            const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
+            rightWall.rotation.y = -Math.PI / 2;
+            rightWall.position.x = s/2;
+            rightWall.receiveShadow = true;
+            roomGroup.add(rightWall);
+
+            const gridRight = createGrid(wallSize, 100, 0x888888, colorGridSub);
+            gridRight.rotation.z = Math.PI / 2;
+            gridRight.position.x = s/2 - 1;
+            roomGroup.add(gridRight);
+
+
+            // --- 浮遊オブジェクト群 ---
+            const geometry = new THREE.BoxGeometry(30, 30, 30);
+            
+            // オブジェクトの配置範囲も部屋サイズに合わせて調整
+            for (let i = 0; i < 50; i++) {
+                const material = new THREE.MeshPhongMaterial({
+                    color: Math.random() > 0.5 ? 0x00d2ff : 0xff0055,
+                    shininess: 80,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const cube = new THREE.Mesh(geometry, material);
+                
+                // 配置範囲: -s/2 ~ s/2 (少しマージンを取る)
+                const rangeXY = s - 100;
+                cube.position.x = (Math.random() - 0.5) * rangeXY;
+                cube.position.y = (Math.random() - 0.5) * rangeXY;
+                
+                // 奥行き: 奥の壁付近から手前まで
+                cube.position.z = -Math.random() * (d - 100) + 50; 
+                
+                cube.userData = {
+                    rotX: (Math.random() - 0.5) * 0.03,
+                    rotY: (Math.random() - 0.5) * 0.03
+                };
+                
+                cube.castShadow = true;
+                cube.receiveShadow = true;
+                
+                roomGroup.add(cube);
+                floatingCubes.push(cube);
+            }
+        }
+
+        // --- Gyro Logic ---
+        function requestGyroPermission() {
+            const overlay = document.getElementById('start-overlay');
+            overlay.style.opacity = '0';
+            setTimeout(()=> overlay.style.display = 'none', 500);
+            isStarted = true;
+
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            window.addEventListener('deviceorientation', handleOrientation);
+                        } else {
+                            alert("ジャイロセンサーの許可が必要です。");
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                window.addEventListener('deviceorientation', handleOrientation);
+            }
+        }
+
+        function handleOrientation(event) {
+            if (currentMode !== 'gyro') return;
+            const x = event.gamma; 
+            const y = event.beta;
+            if (x !== null && y !== null) {
+                let calibY = y - 45; 
+                targetPos.x = x * CONFIG.sensitivity.gyro.x;
+                targetPos.y = -calibY * CONFIG.sensitivity.gyro.y;
+            }
+        }
+
+        // --- Face Tracking Logic ---
+        async function startCameraMode() {
+            const overlay = document.getElementById('start-overlay');
+            const loadingText = document.getElementById('loading');
+            
+            loadingText.style.display = 'block';
+            loadingText.innerText = "Initializing Camera & AI...";
+
+            try {
+                faceMesh = new FaceMesh({locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+                }});
+
+                faceMesh.setOptions({
+                    maxNumFaces: 1,
+                    refineLandmarks: true,
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+
+                faceMesh.onResults(onFaceResults);
+
+                cameraUtils = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await faceMesh.send({image: videoElement});
+                    },
+                    width: 640,
+                    height: 480
+                });
+
+                await cameraUtils.start();
+                isFaceMeshLoaded = true;
+                isStarted = true;
+                
+                overlay.style.opacity = '0';
+                setTimeout(()=> overlay.style.display = 'none', 500);
+                document.getElementById('camera-preview-container').style.display = 'block';
+                
+            } catch (err) {
+                console.error(err);
+                alert("カメラの起動に失敗しました。");
+                loadingText.innerText = "Error: Camera access denied.";
+            }
+        }
+
+        function onFaceResults(results) {
+            if (currentMode !== 'face') return;
+
+            debugCanvas.width = videoElement.videoWidth;
+            debugCanvas.height = videoElement.videoHeight;
+            debugCtx.save();
+            debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+            debugCtx.drawImage(results.image, 0, 0, debugCanvas.width, debugCanvas.height);
+            
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+                drawConnectors(debugCtx, landmarks, FACEMESH_TESSELATION, {color: '#00d2ff33', lineWidth: 1});
+
+                const nose = landmarks[4];
+                const rawX = (nose.x - 0.5); 
+                const rawY = (nose.y - 0.5);
+
+                targetPos.x = rawX * CONFIG.sensitivity.face.x;
+                targetPos.y = -rawY * CONFIG.sensitivity.face.y;
+
+                debugCtx.beginPath();
+                debugCtx.arc(nose.x * debugCanvas.width, nose.y * debugCanvas.height, 5, 0, 2*Math.PI);
+                debugCtx.fillStyle = '#00ffaa';
+                debugCtx.fill();
+            }
+            debugCtx.restore();
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 平滑化
+            currentPos.x += (targetPos.x - currentPos.x) * CONFIG.smoothing;
+            currentPos.y += (targetPos.y - currentPos.y) * CONFIG.smoothing;
+
+            // カメラ更新
+            camera.position.x = currentPos.x;
+            camera.position.y = currentPos.y;
+            camera.lookAt(0, 0, -200);
+
+            // オブジェクト回転
+            floatingCubes.forEach(cube => {
+                cube.rotation.x += cube.userData.rotX;
+                cube.rotation.y += cube.userData.rotY;
+            });
+
+            // 部屋全体を少し逆位相で動かす（奥行き強調）
+            roomGroup.position.x = -currentPos.x * 0.2;
+            roomGroup.position.y = -currentPos.y * 0.2;
+
+            renderer.render(scene, camera);
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+    </script>
+</body>
+</html>
