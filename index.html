@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Depth Box v3.2.1</title>
+    <title>3D Depth Box v3.2.2</title>
     <style>
-        /* * バージョン: v3.2.1
-         * 変更点: 壁のメッシュサイズを巨大化し、視点移動時の見切れ（範囲外）を防止
-         * 部屋サイズ自体も少し拡大
+        /* * バージョン: v3.2.2
+         * 変更点: カメラモード(FACE)のX軸の挙動を反転（直感的な操作に修正）
          */
         body {
             margin: 0;
@@ -29,7 +28,6 @@
             z-index: 1;
         }
 
-        /* --- UI Overlay --- */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -108,6 +106,15 @@
             line-height: 1.5;
         }
 
+        .privacy-note {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 10px;
+            background: rgba(255,255,255,0.1);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+
         .action-btn {
             padding: 15px 40px;
             font-size: 1.1rem;
@@ -119,6 +126,7 @@
             box-shadow: 0 4px 15px rgba(0, 119, 255, 0.4);
             transition: transform 0.2s;
             font-weight: bold;
+            margin-bottom: 20px;
         }
 
         .action-btn:active {
@@ -179,6 +187,9 @@
                 奥行き体験を提供します。
             </p>
             <button class="action-btn" id="main-start-btn">START</button>
+            <div class="privacy-note">
+                ※カメラ映像は端末内でのみ処理され、<br>外部に送信されることはありません。
+            </div>
             <div id="loading">Loading Models...</div>
         </div>
     </div>
@@ -194,21 +205,20 @@
 
     <script>
         /**
-         * バージョン: v3.2.1
-         * 変更点: 部屋サイズ拡張、壁メッシュの巨大化（見切れ防止）
+         * バージョン: v3.2.2
+         * 変更点: カメラモードのX軸挙動反転、プライバシー保護メッセージの明記
          */
 
         // --- Configuration ---
         const CONFIG = {
             sensitivity: {
-                gyro: { x: 30, y: 30 }, // 部屋が広くなった分、少し感度を上げる
+                gyro: { x: 30, y: 30 },
                 face: { x: 1200, y: 1000 },
                 touch: { x: 500, y: 500 }
             },
             smoothing: 0.1,
-            // 部屋の設定（壁までの距離）
-            roomSize: 500, // 320 -> 500 に拡大
-            depth: 600     // 400 -> 600 に拡大
+            roomSize: 500,
+            depth: 600
         };
 
         // --- Global Variables ---
@@ -293,10 +303,9 @@
             const container = document.getElementById('canvas-container');
 
             scene = new THREE.Scene();
-            // 霧の設定：部屋が広くなったので開始距離を調整
             scene.fog = new THREE.FogExp2(0x050505, 0.0015);
 
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000); // 遠くまで見えるように
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000);
             camera.position.set(0, 0, 300);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -307,7 +316,6 @@
 
             createBoxRoom();
 
-            // Lights
             const ambientLight = new THREE.AmbientLight(0x404040, 3);
             scene.add(ambientLight);
 
@@ -316,7 +324,6 @@
             spotLight.angle = Math.PI / 3;
             spotLight.penumbra = 0.2;
             spotLight.castShadow = true;
-            // 影の範囲を広げる
             spotLight.shadow.camera.near = 10;
             spotLight.shadow.camera.far = 2000;
             scene.add(spotLight);
@@ -337,13 +344,10 @@
             roomGroup = new THREE.Group();
             scene.add(roomGroup);
 
-            const s = CONFIG.roomSize; // 壁までの距離基準 (500)
-            const d = CONFIG.depth;    // 奥行き基準 (600)
-            
-            // 重要：壁の板自体のサイズ (視点移動しても端が見えないように巨大にする)
+            const s = CONFIG.roomSize;
+            const d = CONFIG.depth;
             const wallSize = 5000; 
 
-            // マテリアル
             const colorGridSub = 0x111111;
             const colorWall = 0x0a0a0a;
 
@@ -353,13 +357,12 @@
                 shininess: 10
             });
 
-            // グリッドヘルパー作成関数 (サイズを大きくして繰り返し表示)
             function createGrid(size, divisions, color1, color2) {
                 const grid = new THREE.GridHelper(size, divisions, color1, color2);
                 return grid;
             }
 
-            // --- 1. 奥の壁 (Back) ---
+            // Back
             const backWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
             backWall.position.z = -d/2; 
             backWall.receiveShadow = true;
@@ -370,7 +373,7 @@
             gridBack.position.z = -d/2 + 1;
             roomGroup.add(gridBack);
 
-            // --- 2. 床 (Bottom) ---
+            // Bottom
             const floor = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
             floor.rotation.x = -Math.PI / 2;
             floor.position.y = -s/2;
@@ -381,7 +384,7 @@
             gridBottom.position.y = -s/2 + 1;
             roomGroup.add(gridBottom);
 
-            // --- 3. 天井 (Top) ---
+            // Top
             const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
             ceiling.rotation.x = Math.PI / 2;
             ceiling.position.y = s/2;
@@ -391,7 +394,7 @@
             gridTop.position.y = s/2 - 1;
             roomGroup.add(gridTop);
 
-            // --- 4. 左壁 (Left) ---
+            // Left
             const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
             leftWall.rotation.y = Math.PI / 2;
             leftWall.position.x = -s/2;
@@ -403,7 +406,7 @@
             gridLeft.position.x = -s/2 + 1;
             roomGroup.add(gridLeft);
 
-            // --- 5. 右壁 (Right) ---
+            // Right
             const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
             rightWall.rotation.y = -Math.PI / 2;
             rightWall.position.x = s/2;
@@ -415,11 +418,8 @@
             gridRight.position.x = s/2 - 1;
             roomGroup.add(gridRight);
 
-
-            // --- 浮遊オブジェクト群 ---
+            // Objects
             const geometry = new THREE.BoxGeometry(30, 30, 30);
-            
-            // オブジェクトの配置範囲も部屋サイズに合わせて調整
             for (let i = 0; i < 50; i++) {
                 const material = new THREE.MeshPhongMaterial({
                     color: Math.random() > 0.5 ? 0x00d2ff : 0xff0055,
@@ -429,12 +429,9 @@
                 });
                 const cube = new THREE.Mesh(geometry, material);
                 
-                // 配置範囲: -s/2 ~ s/2 (少しマージンを取る)
                 const rangeXY = s - 100;
                 cube.position.x = (Math.random() - 0.5) * rangeXY;
                 cube.position.y = (Math.random() - 0.5) * rangeXY;
-                
-                // 奥行き: 奥の壁付近から手前まで
                 cube.position.z = -Math.random() * (d - 100) + 50; 
                 
                 cube.userData = {
@@ -444,7 +441,6 @@
                 
                 cube.castShadow = true;
                 cube.receiveShadow = true;
-                
                 roomGroup.add(cube);
                 floatingCubes.push(cube);
             }
@@ -542,10 +538,14 @@
                 drawConnectors(debugCtx, landmarks, FACEMESH_TESSELATION, {color: '#00d2ff33', lineWidth: 1});
 
                 const nose = landmarks[4];
+                // 【修正点】ここでX座標にマイナスを掛けて、自分(カメラ)の動きと視点移動を同期させる
+                // (nose.x - 0.5) が正(右)のとき、カメラも右(+X)へ動かすため反転させる必要がある
+                // (Webカメラの像は自分が右へ行くと左へ映るため、rawXは負になる。これを正に戻すにはマイナスが必要)
                 const rawX = (nose.x - 0.5); 
                 const rawY = (nose.y - 0.5);
 
-                targetPos.x = rawX * CONFIG.sensitivity.face.x;
+                // 反転: -rawX
+                targetPos.x = -rawX * CONFIG.sensitivity.face.x;
                 targetPos.y = -rawY * CONFIG.sensitivity.face.y;
 
                 debugCtx.beginPath();
