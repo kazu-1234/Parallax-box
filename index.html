@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Depth Box v3.2.2</title>
+    <title>Parallax Cinema v4.3.0</title>
     <style>
-        /* * バージョン: v3.2.2
-         * 変更点: カメラモード(FACE)のX軸の挙動を反転（直感的な操作に修正）
+        /* * バージョン: v4.3.0
+         * 変更点: PCでGYROボタンを非表示にし、カメラ(FACE)操作を正式サポート
          */
         body {
             margin: 0;
@@ -16,59 +16,183 @@
             font-family: 'Helvetica Neue', Arial, sans-serif;
             color: white;
             touch-action: none;
+            user-select: none; 
+            -webkit-user-select: none;
         }
 
-        #canvas-container {
+        #container {
+            position: relative;
             width: 100vw;
             height: 100vh;
-            display: block;
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: 1;
+            overflow: hidden;
         }
 
+        #css-container, #webgl-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #css-container { z-index: 0; }
+        #webgl-container { z-index: 1; pointer-events: none; }
+
+        /* --- UI Overlay --- */
         #ui-layer {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: 10;
+            z-index: 20;
             pointer-events: none;
         }
 
-        #mode-switch {
+        #controls-container {
             position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(20, 20, 30, 0.8);
+            top: 10px;
+            right: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+            pointer-events: auto;
+        }
+
+        .control-group {
+            background: rgba(20, 20, 30, 0.85);
             border: 1px solid #444;
-            border-radius: 30px;
+            border-radius: 20px;
             padding: 5px;
             display: flex;
-            gap: 5px;
-            pointer-events: auto;
+            gap: 2px;
             backdrop-filter: blur(5px);
         }
 
-        .mode-btn {
+        .ctrl-btn {
             background: transparent;
             border: none;
             color: #888;
-            padding: 8px 12px;
-            font-size: 13px;
+            padding: 6px 12px;
+            font-size: 12px;
             font-weight: bold;
             cursor: pointer;
-            border-radius: 20px;
+            border-radius: 15px;
             transition: all 0.3s ease;
+            white-space: nowrap;
         }
 
-        .mode-btn.active {
-            background: #00d2ff;
-            color: #000;
-            box-shadow: 0 0 10px rgba(0, 210, 255, 0.5);
+        .ctrl-btn:hover {
+            color: #ccc;
+            background: rgba(255, 255, 255, 0.1);
         }
+
+        .ctrl-btn.active {
+            color: #000;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+        }
+
+        #mode-group .active { background: #00d2ff; }
+        #scene-group .active { background: #ff0055; }
+
+        /* 設定ボタン */
+        #settings-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(50, 50, 60, 0.9);
+            border: 1px solid #666;
+            color: white;
+            font-size: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: transform 0.3s;
+        }
+        #settings-btn:hover { background: rgba(70, 70, 80, 1.0); }
+        #settings-btn:active { transform: rotate(90deg); }
+
+        #settings-panel {
+            position: absolute;
+            top: 60px;
+            right: 10px;
+            width: 200px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid #444;
+            border-radius: 15px;
+            padding: 15px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: auto;
+            backdrop-filter: blur(10px);
+        }
+
+        .setting-label {
+            font-size: 12px;
+            color: #ccc;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #00d2ff;
+            cursor: pointer;
+            margin-top: -6px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #444;
+            border-radius: 2px;
+        }
+
+        #reset-sensitivity {
+            font-size: 10px;
+            background: #333;
+            border: none;
+            color: #aaa;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            align-self: flex-end;
+        }
+        #reset-sensitivity:hover { color: white; background: #555; }
+
+        #cinema-ui {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 500px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 15px;
+            border: 1px solid #333;
+            display: none;
+            pointer-events: auto;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .input-row { display: flex; gap: 10px; }
+        #yt-input { flex: 1; background: #222; border: 1px solid #555; color: white; padding: 10px; border-radius: 8px; font-size: 14px; }
+        #yt-load-btn { background: #ff0000; color: white; border: none; padding: 0 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        #yt-load-btn:hover { background: #ff3333; }
 
         #start-overlay {
             position: absolute;
@@ -76,128 +200,132 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.95);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 50;
+            z-index: 100;
             pointer-events: auto;
             transition: opacity 0.5s;
         }
 
-        .overlay-content {
-            text-align: center;
-            padding: 20px;
-            max-width: 90%;
-        }
+        .overlay-content { text-align: center; padding: 20px; max-width: 90%; }
+        h1 { font-size: 2.5rem; margin-bottom: 10px; background: linear-gradient(45deg, #00d2ff, #ff0055); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .action-btn { padding: 15px 50px; font-size: 1.2rem; background: linear-gradient(90deg, #00d2ff, #0077ff); border: none; border-radius: 50px; color: white; cursor: pointer; box-shadow: 0 4px 20px rgba(0, 119, 255, 0.5); font-weight: bold; margin-top: 20px; }
+        .action-btn:hover { transform: scale(1.05); }
+        .action-btn:active { transform: scale(0.95); }
+        
+        #loading { margin-top: 20px; color: #00d2ff; font-family: monospace; display: none; }
 
-        h1 {
-            font-size: 2rem;
-            margin-bottom: 10px;
-            background: linear-gradient(45deg, #00d2ff, #00ffaa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        p.desc {
-            color: #ccc;
-            margin-bottom: 30px;
-            line-height: 1.5;
-        }
-
-        .privacy-note {
-            font-size: 0.8rem;
+        .device-info {
+            margin-top: 20px;
+            font-size: 13px;
             color: #888;
-            margin-top: 10px;
-            background: rgba(255,255,255,0.1);
-            padding: 5px 10px;
-            border-radius: 5px;
+            background: rgba(255,255,255,0.05);
+            padding: 10px 20px;
+            border-radius: 10px;
+            line-height: 1.6;
+        }
+        .icon-key {
+            display: inline-block;
+            border: 1px solid #666;
+            border-radius: 4px;
+            padding: 0 4px;
+            font-size: 10px;
+            margin: 0 2px;
         }
 
-        .action-btn {
-            padding: 15px 40px;
-            font-size: 1.1rem;
-            background: linear-gradient(90deg, #00d2ff, #0077ff);
-            border: none;
-            border-radius: 50px;
-            color: white;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0, 119, 255, 0.4);
-            transition: transform 0.2s;
-            font-weight: bold;
-            margin-bottom: 20px;
-        }
-
-        .action-btn:active {
-            transform: scale(0.95);
-        }
-
-        #camera-preview-container {
+        #camera-preview {
             position: absolute;
             bottom: 20px;
             right: 20px;
             width: 100px;
             height: 133px;
-            border-radius: 12px;
+            border-radius: 10px;
             overflow: hidden;
             border: 2px solid #333;
             background: #000;
             display: none;
-            pointer-events: auto;
             transform: scaleX(-1);
-            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            pointer-events: auto;
         }
-
-        #debug-canvas {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        #loading {
-            margin-top: 15px;
-            font-size: 0.9rem;
-            color: #00d2ff;
-            display: none;
-        }
+        #camera-preview canvas { width: 100%; height: 100%; object-fit: cover; }
     </style>
 </head>
 <body>
 
-    <div id="canvas-container"></div>
+    <div id="container">
+        <div id="css-container"></div>
+        <div id="webgl-container"></div>
+    </div>
 
+    <!-- UI Layer -->
     <div id="ui-layer">
-        <div id="mode-switch">
-            <button class="mode-btn active" id="btn-gyro" onclick="switchMode('gyro')">GYRO</button>
-            <button class="mode-btn" id="btn-touch" onclick="switchMode('touch')">TOUCH</button>
-            <button class="mode-btn" id="btn-face" onclick="switchMode('face')">FACE</button>
+        <div id="controls-container">
+            <button id="settings-btn" onclick="toggleSettings()" title="Settings">⚙️</button>
+            
+            <div class="control-group" id="scene-group">
+                <button class="ctrl-btn active" onclick="switchScene('box')">📦 BOX</button>
+                <button class="ctrl-btn" onclick="switchScene('dance')">🤖 DANCE</button>
+                <button class="ctrl-btn" onclick="switchScene('cinema')">🎬 CINEMA</button>
+            </div>
+            
+            <div class="control-group" id="mode-group">
+                <button class="ctrl-btn active" id="btn-gyro" onclick="switchMode('gyro')">GYRO</button>
+                <button class="ctrl-btn" id="btn-touch" onclick="switchMode('touch')">TOUCH</button>
+                <button class="ctrl-btn" id="btn-face" onclick="switchMode('face')">FACE</button>
+            </div>
         </div>
 
-        <div id="camera-preview-container">
+        <!-- Settings Panel -->
+        <div id="settings-panel">
+            <div class="setting-label">
+                <span>SENSITIVITY</span>
+                <span id="sensitivity-val">100%</span>
+            </div>
+            <input type="range" id="sensitivity-slider" min="10" max="300" value="100">
+            <button id="reset-sensitivity" onclick="resetSensitivity()">RESET</button>
+        </div>
+
+        <!-- Cinema Mode UI -->
+        <div id="cinema-ui">
+            <div style="color:#ccc; font-size:12px; margin-bottom:5px;">YouTube URL:</div>
+            <div class="input-row">
+                <input type="text" id="yt-input" placeholder="https://youtu.be/..." value="https://www.youtube.com/watch?v=Lx7O_e417RE">
+                <button id="yt-load-btn">LOAD</button>
+            </div>
+        </div>
+
+        <div id="camera-preview">
             <canvas id="debug-canvas"></canvas>
         </div>
     </div>
 
+    <!-- Start Overlay -->
     <div id="start-overlay">
         <div class="overlay-content">
-            <h1>Parallax Box</h1>
-            <p class="desc">
-                画面の中に箱庭があるような<br>
-                奥行き体験を提供します。
+            <h1>Parallax World</h1>
+            <p style="color:#ccc; margin-bottom: 5px;">
+                箱庭、ダンス、そして映画館。<br>
+                奥行きのある空間体験を。
             </p>
-            <button class="action-btn" id="main-start-btn">START</button>
-            <div class="privacy-note">
-                ※カメラ映像は端末内でのみ処理され、<br>外部に送信されることはありません。
+            
+            <div class="device-info" id="start-guide">
+                Wait for device detection...
             </div>
-            <div id="loading">Loading Models...</div>
+
+            <button class="action-btn" id="main-start-btn">ENTER</button>
+            <div id="loading">Loading 3D Resources...</div>
         </div>
     </div>
 
     <video id="input-video" style="display:none;" playsinline webkit-playsinline></video>
 
-    <!-- ライブラリ -->
+    <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS3DRenderer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -205,387 +333,443 @@
 
     <script>
         /**
-         * バージョン: v3.2.2
-         * 変更点: カメラモードのX軸挙動反転、プライバシー保護メッセージの明記
+         * バージョン: v4.3.0
+         * 機能: PCでGYRO非表示、FACEモード対応
          */
 
         // --- Configuration ---
-        const CONFIG = {
-            sensitivity: {
-                gyro: { x: 30, y: 30 },
-                face: { x: 1200, y: 1000 },
-                touch: { x: 500, y: 500 }
-            },
-            smoothing: 0.1,
-            roomSize: 500,
-            depth: 600
+        const BASE_SENSITIVITY = {
+            gyro: { x: 15, y: 15 },
+            face: { x: 600, y: 500 },
+            touch: { x: 250, y: 250 },
+            keyboard: { x: 300, y: 300 }
         };
 
-        // --- Global Variables ---
+        const CONFIG = {
+            sensitivityMultiplier: 1.0,
+            smoothing: 0.08,
+            roomSize: 600,
+            depth: 800,
+            keyboardSpeed: 5
+        };
+
+        // --- Global State ---
         let currentMode = 'gyro';
+        let currentScene = 'box';
         let isStarted = false;
-        let isFaceMeshLoaded = false;
         
         let targetPos = { x: 0, y: 0 };
         let currentPos = { x: 0, y: 0 };
 
-        let scene, camera, renderer;
-        let roomGroup, floatingCubes = [];
+        let virtualCursor = { x: 0, y: 0 }; 
+        let keysPressed = {};
 
+        // Device Check
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        // Three.js
+        let scene, camera, renderer, cssRenderer;
+        let roomGroup;
+        let boxObjects = [];
+        let robotModel = null;
+        let mixer = null;
+        let youtubeObj = null;
+        
+        // MediaPipe
         let faceMesh, cameraUtils;
+        let isFaceMeshLoaded = false;
         const videoElement = document.getElementById('input-video');
         const debugCanvas = document.getElementById('debug-canvas');
         const debugCtx = debugCanvas.getContext('2d');
+        const clock = new THREE.Clock();
 
         // --- Initialization ---
         window.onload = () => {
+            detectDeviceAndSetMode();
             initThreeJS();
             setupInputEvents();
+            setupCinemaUI();
+            setupSettingsUI();
 
             document.getElementById('main-start-btn').addEventListener('click', async () => {
-                if (currentMode === 'gyro') {
-                    requestGyroPermission();
-                } else if (currentMode === 'face') {
-                    await startCameraMode();
-                } else {
-                    startDirectly();
-                }
+                const overlay = document.getElementById('start-overlay');
+                const loading = document.getElementById('loading');
+                const btn = document.getElementById('main-start-btn');
+                
+                btn.style.display = 'none';
+                loading.style.display = 'block';
+
+                await loadRobotModel();
+                
+                loading.style.display = 'none';
+                overlay.style.opacity = '0';
+                setTimeout(()=> overlay.style.display = 'none', 500);
+                isStarted = true;
+
+                // モバイルでかつGYROモードの場合のみ許可を求める
+                if (currentMode === 'gyro' && isMobile) requestGyroPermission();
             });
         };
 
+        // --- Device Detection ---
+        function detectDeviceAndSetMode() {
+            const guide = document.getElementById('start-guide');
+            const gyroBtn = document.getElementById('btn-gyro');
+            
+            if (isMobile) {
+                // スマホの場合
+                currentMode = 'gyro';
+                // スマホは全ボタン表示
+                gyroBtn.style.display = 'block';
+                
+                guide.innerHTML = `
+                    📱 <b>Mobile Mode</b><br>
+                    傾き(Gyro) や タッチ操作で視点移動<br>
+                    <span style="font-size:11px; opacity:0.8;">※カメラ許可で顔認識モードも利用可</span>
+                `;
+            } else {
+                // PCの場合
+                currentMode = 'touch';
+                // PCはGYROボタンを隠す
+                gyroBtn.style.display = 'none';
+
+                guide.innerHTML = `
+                    💻 <b>PC Mode</b><br>
+                    マウス移動 / キーボード操作 / <b>Webカメラ(Face)</b><br>
+                    <span class="icon-key">W</span><span class="icon-key">A</span><span class="icon-key">S</span><span class="icon-key">D</span> 
+                    / <span class="icon-key">↑</span><span class="icon-key">←</span><span class="icon-key">↓</span><span class="icon-key">→</span>
+                `;
+            }
+            updateModeUI();
+        }
+
+        // --- Settings Logic ---
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            panel.style.display = (panel.style.display === 'flex') ? 'none' : 'flex';
+        }
+
+        function setupSettingsUI() {
+            const slider = document.getElementById('sensitivity-slider');
+            const display = document.getElementById('sensitivity-val');
+            slider.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                CONFIG.sensitivityMultiplier = val / 100;
+                display.innerText = `${val}%`;
+            });
+        }
+
+        function resetSensitivity() {
+            const slider = document.getElementById('sensitivity-slider');
+            const display = document.getElementById('sensitivity-val');
+            slider.value = 100;
+            CONFIG.sensitivityMultiplier = 1.0;
+            display.innerText = "100%";
+        }
+
+        // --- Scene & Mode Switching ---
         function switchMode(mode) {
             if (mode === currentMode) return;
             currentMode = mode;
-
-            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(`btn-${mode}`).classList.add('active');
-
-            const preview = document.getElementById('camera-preview-container');
-            preview.style.display = (mode === 'face' && isStarted) ? 'block' : 'none';
-
+            updateModeUI();
+            
+            virtualCursor = { x: 0, y: 0 };
             targetPos = { x: 0, y: 0 };
 
-            if (isStarted) {
-                if (mode === 'face' && !isFaceMeshLoaded) {
-                    startCameraMode();
-                }
+            if (isStarted && mode === 'face' && !isFaceMeshLoaded) startCameraMode();
+        }
+
+        function updateModeUI() {
+            document.querySelectorAll('#mode-group .ctrl-btn').forEach(b => b.classList.remove('active'));
+            const btn = document.getElementById(`btn-${currentMode}`);
+            if(btn) btn.classList.add('active');
+
+            const preview = document.getElementById('camera-preview');
+            preview.style.display = (currentMode === 'face' && isStarted) ? 'block' : 'none';
+        }
+
+        function switchScene(sceneType) {
+            if (sceneType === currentScene) return;
+            currentScene = sceneType;
+
+            document.querySelectorAll('#scene-group .ctrl-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+
+            boxObjects.forEach(cube => cube.visible = (sceneType === 'box'));
+            if (robotModel) robotModel.visible = (sceneType === 'dance');
+
+            const cinemaUI = document.getElementById('cinema-ui');
+            const iframe = document.getElementById('youtube-iframe');
+            if (sceneType === 'cinema') {
+                cinemaUI.style.display = 'flex';
+                if(iframe) iframe.style.visibility = 'visible';
+            } else {
+                cinemaUI.style.display = 'none';
+                if(iframe) iframe.style.visibility = 'hidden';
             }
-        }
-
-        function startDirectly() {
-            const overlay = document.getElementById('start-overlay');
-            overlay.style.opacity = '0';
-            setTimeout(()=> overlay.style.display = 'none', 500);
-            isStarted = true;
-        }
-
-        // --- Input Handling ---
-        function setupInputEvents() {
-            document.addEventListener('mousemove', (e) => {
-                if (currentMode === 'touch') handleInput(e.clientX, e.clientY);
-            });
-            document.addEventListener('touchmove', (e) => {
-                if (currentMode === 'touch' && e.touches.length > 0) {
-                    handleInput(e.touches[0].clientX, e.touches[0].clientY);
-                }
-            }, { passive: false });
-        }
-
-        function handleInput(x, y) {
-            const normX = (x / window.innerWidth) * 2 - 1;
-            const normY = (y / window.innerHeight) * 2 - 1;
-            targetPos.x = normX * CONFIG.sensitivity.touch.x;
-            targetPos.y = -normY * CONFIG.sensitivity.touch.y;
         }
 
         // --- Three.js Setup ---
         function initThreeJS() {
-            const container = document.getElementById('canvas-container');
-
-            scene = new THREE.Scene();
-            scene.fog = new THREE.FogExp2(0x050505, 0.0015);
-
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000);
-            camera.position.set(0, 0, 300);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            const container = document.getElementById('webgl-container');
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.shadowMap.enabled = true;
             container.appendChild(renderer.domElement);
 
-            createBoxRoom();
+            const cssContainer = document.getElementById('css-container');
+            cssRenderer = new THREE.CSS3DRenderer();
+            cssRenderer.setSize(window.innerWidth, window.innerHeight);
+            cssContainer.appendChild(cssRenderer.domElement);
 
-            const ambientLight = new THREE.AmbientLight(0x404040, 3);
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050505, 0.001);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000);
+            camera.position.set(0, 0, 400);
+
+            createRoom();
+
+            const ambientLight = new THREE.AmbientLight(0x404040, 2);
             scene.add(ambientLight);
-
             const spotLight = new THREE.SpotLight(0xffffff, 1.5);
             spotLight.position.set(0, 400, 400);
             spotLight.angle = Math.PI / 3;
-            spotLight.penumbra = 0.2;
+            spotLight.penumbra = 0.5;
             spotLight.castShadow = true;
-            spotLight.shadow.camera.near = 10;
-            spotLight.shadow.camera.far = 2000;
             scene.add(spotLight);
-
-            const pLight1 = new THREE.PointLight(0x00d2ff, 1, 800);
-            pLight1.position.set(-200, 0, 0);
+            const pLight1 = new THREE.PointLight(0x00d2ff, 1.5, 1000);
+            pLight1.position.set(-300, 100, 0);
             scene.add(pLight1);
-            
-            const pLight2 = new THREE.PointLight(0xff0055, 1, 800);
-            pLight2.position.set(200, 0, 0);
+            const pLight2 = new THREE.PointLight(0xff0055, 1.5, 1000);
+            pLight2.position.set(300, 100, 0);
             scene.add(pLight2);
 
             window.addEventListener('resize', onResize);
             animate();
         }
 
-        function createBoxRoom() {
+        // --- Room Construction ---
+        function createRoom() {
             roomGroup = new THREE.Group();
             scene.add(roomGroup);
 
             const s = CONFIG.roomSize;
             const d = CONFIG.depth;
-            const wallSize = 5000; 
+            const wallSize = 5000;
+            const wallMat = new THREE.MeshPhongMaterial({ color: 0x0a0a0a, side: THREE.FrontSide, shininess: 10 });
+            function createGrid(size, divisions, color1, color2) { return new THREE.GridHelper(size, divisions, color1, color2); }
 
-            const colorGridSub = 0x111111;
-            const colorWall = 0x0a0a0a;
+            const backWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
+            backWall.position.z = -d/2; backWall.receiveShadow = true; roomGroup.add(backWall);
+            const gridBack = createGrid(wallSize, 100, 0x00d2ff, 0x111111);
+            gridBack.rotation.x = Math.PI/2; gridBack.position.z = -d/2+2; roomGroup.add(gridBack);
 
-            const wallMat = new THREE.MeshPhongMaterial({
-                color: colorWall,
-                side: THREE.FrontSide,
-                shininess: 10
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
+            floor.rotation.x = -Math.PI/2; floor.position.y = -s/2; floor.receiveShadow = true; roomGroup.add(floor);
+            const gridBottom = createGrid(wallSize, 100, 0x00ffaa, 0x111111);
+            gridBottom.position.y = -s/2+2; roomGroup.add(gridBottom);
+
+            const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
+            ceiling.rotation.x = Math.PI/2; ceiling.position.y = s/2; roomGroup.add(ceiling);
+            const gridTop = createGrid(wallSize, 100, 0xff0055, 0x111111);
+            gridTop.position.y = s/2-2; roomGroup.add(gridTop);
+
+            const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
+            leftWall.rotation.y = Math.PI/2; leftWall.position.x = -s/2; leftWall.receiveShadow = true; roomGroup.add(leftWall);
+            const gridLeft = createGrid(wallSize, 100, 0x888888, 0x111111);
+            gridLeft.rotation.z = Math.PI/2; gridLeft.position.x = -s/2+2; roomGroup.add(gridLeft);
+
+            const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
+            rightWall.rotation.y = -Math.PI/2; rightWall.position.x = s/2; rightWall.receiveShadow = true; roomGroup.add(rightWall);
+            const gridRight = createGrid(wallSize, 100, 0x888888, 0x111111);
+            gridRight.rotation.z = Math.PI/2; gridRight.position.x = s/2-2; roomGroup.add(gridRight);
+
+            const cubeGeo = new THREE.BoxGeometry(40, 40, 40);
+            for (let i = 0; i < 40; i++) {
+                const material = new THREE.MeshPhongMaterial({ color: Math.random()>0.5?0x00d2ff:0xff0055, shininess: 80, transparent: true, opacity: 0.9 });
+                const cube = new THREE.Mesh(cubeGeo, material);
+                cube.position.set((Math.random()-0.5)*(s-100), (Math.random()-0.5)*(s-100), -Math.random()*(d-150)+50);
+                cube.userData = { rotX: (Math.random()-0.5)*0.03, rotY: (Math.random()-0.5)*0.03 };
+                cube.castShadow = true; cube.receiveShadow = true;
+                roomGroup.add(cube);
+                boxObjects.push(cube);
+            }
+
+            const div = document.createElement('div');
+            div.style.width = '800px'; div.style.height = '450px'; div.style.backgroundColor = '#000';
+            const iframe = document.createElement('iframe');
+            iframe.id = 'youtube-iframe';
+            iframe.style.width = '100%'; iframe.style.height = '100%'; iframe.style.border = '0';
+            iframe.src = 'https://www.youtube.com/embed/Lx7O_e417RE?rel=0&enablejsapi=1'; 
+            div.appendChild(iframe);
+            const object = new THREE.CSS3DObject(div);
+            object.position.set(0, 0, -d/2 + 10);
+            object.scale.set(1.2, 1.2, 1.2); 
+            youtubeObj = object;
+            scene.add(object);
+            iframe.style.visibility = 'hidden';
+        }
+
+        // --- Robot ---
+        function loadRobotModel() {
+            return new Promise((resolve) => {
+                const loader = new THREE.GLTFLoader();
+                loader.load('https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb', (gltf) => {
+                    robotModel = gltf.scene;
+                    robotModel.scale.set(40, 40, 40);
+                    robotModel.position.set(0, -150, -100);
+                    robotModel.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+                    mixer = new THREE.AnimationMixer(robotModel);
+                    const clip = THREE.AnimationClip.findByName(gltf.animations, 'Dance');
+                    if (clip) mixer.clipAction(clip).play();
+                    robotModel.visible = false;
+                    roomGroup.add(robotModel);
+                    resolve();
+                }, undefined, (e) => { console.error(e); resolve(); });
+            });
+        }
+
+        // --- Cinema UI ---
+        function setupCinemaUI() {
+            document.getElementById('yt-load-btn').addEventListener('click', () => {
+                const input = document.getElementById('yt-input').value;
+                const videoId = extractVideoID(input);
+                if (videoId) document.getElementById('youtube-iframe').src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
+                else alert("無効なYouTube URLです。");
+            });
+        }
+        function extractVideoID(url) {
+            const m = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+            return (m && m[2].length === 11) ? m[2] : null;
+        }
+
+        // --- Inputs ---
+        function setupInputEvents() {
+            document.addEventListener('mousemove', (e) => { 
+                if (currentMode === 'touch') {
+                    handleInput(e.clientX, e.clientY);
+                    const nx = (e.clientX / window.innerWidth) * 2 - 1;
+                    const ny = (e.clientY / window.innerHeight) * 2 - 1;
+                    virtualCursor.x = nx;
+                    virtualCursor.y = ny;
+                }
             });
 
-            function createGrid(size, divisions, color1, color2) {
-                const grid = new THREE.GridHelper(size, divisions, color1, color2);
-                return grid;
-            }
+            document.addEventListener('touchmove', (e) => { 
+                if (currentMode === 'touch' && e.touches.length > 0) {
+                    handleInput(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: false });
 
-            // Back
-            const backWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
-            backWall.position.z = -d/2; 
-            backWall.receiveShadow = true;
-            roomGroup.add(backWall);
+            document.addEventListener('keydown', (e) => {
+                keysPressed[e.code] = true;
+                if (!isMobile && currentMode !== 'touch') switchMode('touch');
+            });
+            document.addEventListener('keyup', (e) => {
+                keysPressed[e.code] = false;
+            });
+        }
 
-            const gridBack = createGrid(wallSize, 100, 0x00d2ff, colorGridSub);
-            gridBack.rotation.x = Math.PI / 2;
-            gridBack.position.z = -d/2 + 1;
-            roomGroup.add(gridBack);
+        function handleInput(x, y) {
+            const nx = (x / window.innerWidth) * 2 - 1;
+            const ny = (y / window.innerHeight) * 2 - 1;
+            targetPos.x = nx * BASE_SENSITIVITY.touch.x * CONFIG.sensitivityMultiplier;
+            targetPos.y = -ny * BASE_SENSITIVITY.touch.y * CONFIG.sensitivityMultiplier;
+        }
 
-            // Bottom
-            const floor = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
-            floor.rotation.x = -Math.PI / 2;
-            floor.position.y = -s/2;
-            floor.receiveShadow = true;
-            roomGroup.add(floor);
+        function updateKeyboardInput() {
+            if (currentMode !== 'touch') return;
 
-            const gridBottom = createGrid(wallSize, 100, 0x00ffaa, colorGridSub);
-            gridBottom.position.y = -s/2 + 1;
-            roomGroup.add(gridBottom);
+            const speed = 0.03;
+            let moved = false;
 
-            // Top
-            const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
-            ceiling.rotation.x = Math.PI / 2;
-            ceiling.position.y = s/2;
-            roomGroup.add(ceiling);
-            
-            const gridTop = createGrid(wallSize, 100, 0xff0055, colorGridSub);
-            gridTop.position.y = s/2 - 1;
-            roomGroup.add(gridTop);
+            if (keysPressed['ArrowRight'] || keysPressed['KeyD']) { virtualCursor.x += speed; moved = true; }
+            if (keysPressed['ArrowLeft'] || keysPressed['KeyA']) { virtualCursor.x -= speed; moved = true; }
+            if (keysPressed['ArrowDown'] || keysPressed['KeyS']) { virtualCursor.y += speed; moved = true; }
+            if (keysPressed['ArrowUp'] || keysPressed['KeyW']) { virtualCursor.y -= speed; moved = true; }
 
-            // Left
-            const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
-            leftWall.rotation.y = Math.PI / 2;
-            leftWall.position.x = -s/2;
-            leftWall.receiveShadow = true;
-            roomGroup.add(leftWall);
-
-            const gridLeft = createGrid(wallSize, 100, 0x888888, colorGridSub);
-            gridLeft.rotation.z = Math.PI / 2;
-            gridLeft.position.x = -s/2 + 1;
-            roomGroup.add(gridLeft);
-
-            // Right
-            const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(wallSize, wallSize), wallMat);
-            rightWall.rotation.y = -Math.PI / 2;
-            rightWall.position.x = s/2;
-            rightWall.receiveShadow = true;
-            roomGroup.add(rightWall);
-
-            const gridRight = createGrid(wallSize, 100, 0x888888, colorGridSub);
-            gridRight.rotation.z = Math.PI / 2;
-            gridRight.position.x = s/2 - 1;
-            roomGroup.add(gridRight);
-
-            // Objects
-            const geometry = new THREE.BoxGeometry(30, 30, 30);
-            for (let i = 0; i < 50; i++) {
-                const material = new THREE.MeshPhongMaterial({
-                    color: Math.random() > 0.5 ? 0x00d2ff : 0xff0055,
-                    shininess: 80,
-                    transparent: true,
-                    opacity: 0.9
-                });
-                const cube = new THREE.Mesh(geometry, material);
-                
-                const rangeXY = s - 100;
-                cube.position.x = (Math.random() - 0.5) * rangeXY;
-                cube.position.y = (Math.random() - 0.5) * rangeXY;
-                cube.position.z = -Math.random() * (d - 100) + 50; 
-                
-                cube.userData = {
-                    rotX: (Math.random() - 0.5) * 0.03,
-                    rotY: (Math.random() - 0.5) * 0.03
-                };
-                
-                cube.castShadow = true;
-                cube.receiveShadow = true;
-                roomGroup.add(cube);
-                floatingCubes.push(cube);
+            if (moved) {
+                virtualCursor.x = Math.max(-1.5, Math.min(1.5, virtualCursor.x));
+                virtualCursor.y = Math.max(-1.5, Math.min(1.5, virtualCursor.y));
+                targetPos.x = virtualCursor.x * BASE_SENSITIVITY.keyboard.x * CONFIG.sensitivityMultiplier;
+                targetPos.y = -virtualCursor.y * BASE_SENSITIVITY.keyboard.y * CONFIG.sensitivityMultiplier;
             }
         }
 
-        // --- Gyro Logic ---
         function requestGyroPermission() {
-            const overlay = document.getElementById('start-overlay');
-            overlay.style.opacity = '0';
-            setTimeout(()=> overlay.style.display = 'none', 500);
-            isStarted = true;
-
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(response => {
-                        if (response === 'granted') {
-                            window.addEventListener('deviceorientation', handleOrientation);
-                        } else {
-                            alert("ジャイロセンサーの許可が必要です。");
-                        }
-                    })
-                    .catch(console.error);
-            } else {
-                window.addEventListener('deviceorientation', handleOrientation);
-            }
+            if (typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function') {
+                DeviceOrientationEvent.requestPermission().then(r => { if(r==='granted') window.addEventListener('deviceorientation', handleGyro); });
+            } else window.addEventListener('deviceorientation', handleGyro);
         }
-
-        function handleOrientation(event) {
+        function handleGyro(e) {
             if (currentMode !== 'gyro') return;
-            const x = event.gamma; 
-            const y = event.beta;
-            if (x !== null && y !== null) {
-                let calibY = y - 45; 
-                targetPos.x = x * CONFIG.sensitivity.gyro.x;
-                targetPos.y = -calibY * CONFIG.sensitivity.gyro.y;
+            const x = e.gamma; const y = e.beta;
+            if (x!=null && y!=null) {
+                targetPos.x = x * BASE_SENSITIVITY.gyro.x * CONFIG.sensitivityMultiplier;
+                targetPos.y = -(y - 45) * BASE_SENSITIVITY.gyro.y * CONFIG.sensitivityMultiplier;
             }
         }
 
-        // --- Face Tracking Logic ---
         async function startCameraMode() {
-            const overlay = document.getElementById('start-overlay');
-            const loadingText = document.getElementById('loading');
-            
-            loadingText.style.display = 'block';
-            loadingText.innerText = "Initializing Camera & AI...";
-
             try {
-                faceMesh = new FaceMesh({locateFile: (file) => {
-                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-                }});
-
-                faceMesh.setOptions({
-                    maxNumFaces: 1,
-                    refineLandmarks: true,
-                    minDetectionConfidence: 0.5,
-                    minTrackingConfidence: 0.5
-                });
-
+                faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+                faceMesh.setOptions({maxNumFaces:1, minDetectionConfidence:0.5, minTrackingConfidence:0.5});
                 faceMesh.onResults(onFaceResults);
-
-                cameraUtils = new Camera(videoElement, {
-                    onFrame: async () => {
-                        await faceMesh.send({image: videoElement});
-                    },
-                    width: 640,
-                    height: 480
-                });
-
+                cameraUtils = new Camera(videoElement, { onFrame: async () => await faceMesh.send({image: videoElement}), width: 640, height: 480 });
                 await cameraUtils.start();
                 isFaceMeshLoaded = true;
-                isStarted = true;
-                
-                overlay.style.opacity = '0';
-                setTimeout(()=> overlay.style.display = 'none', 500);
-                document.getElementById('camera-preview-container').style.display = 'block';
-                
-            } catch (err) {
-                console.error(err);
-                alert("カメラの起動に失敗しました。");
-                loadingText.innerText = "Error: Camera access denied.";
-            }
+            } catch(e) { console.error(e); alert("カメラ起動エラー: Webカメラへのアクセスを許可してください"); }
         }
-
         function onFaceResults(results) {
             if (currentMode !== 'face') return;
-
-            debugCanvas.width = videoElement.videoWidth;
-            debugCanvas.height = videoElement.videoHeight;
-            debugCtx.save();
-            debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-            debugCtx.drawImage(results.image, 0, 0, debugCanvas.width, debugCanvas.height);
-            
+            debugCanvas.width = videoElement.videoWidth; debugCanvas.height = videoElement.videoHeight;
+            debugCtx.save(); debugCtx.clearRect(0,0,debugCanvas.width, debugCanvas.height);
+            debugCtx.drawImage(results.image,0,0,debugCanvas.width, debugCanvas.height);
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-                const landmarks = results.multiFaceLandmarks[0];
-                drawConnectors(debugCtx, landmarks, FACEMESH_TESSELATION, {color: '#00d2ff33', lineWidth: 1});
-
-                const nose = landmarks[4];
-                // 【修正点】ここでX座標にマイナスを掛けて、自分(カメラ)の動きと視点移動を同期させる
-                // (nose.x - 0.5) が正(右)のとき、カメラも右(+X)へ動かすため反転させる必要がある
-                // (Webカメラの像は自分が右へ行くと左へ映るため、rawXは負になる。これを正に戻すにはマイナスが必要)
-                const rawX = (nose.x - 0.5); 
-                const rawY = (nose.y - 0.5);
-
-                // 反転: -rawX
-                targetPos.x = -rawX * CONFIG.sensitivity.face.x;
-                targetPos.y = -rawY * CONFIG.sensitivity.face.y;
-
-                debugCtx.beginPath();
-                debugCtx.arc(nose.x * debugCanvas.width, nose.y * debugCanvas.height, 5, 0, 2*Math.PI);
-                debugCtx.fillStyle = '#00ffaa';
-                debugCtx.fill();
+                const nose = results.multiFaceLandmarks[0][4];
+                targetPos.x = -(nose.x - 0.5) * BASE_SENSITIVITY.face.x * CONFIG.sensitivityMultiplier;
+                targetPos.y = -(nose.y - 0.5) * BASE_SENSITIVITY.face.y * CONFIG.sensitivityMultiplier;
+                debugCtx.beginPath(); debugCtx.arc(nose.x*debugCanvas.width, nose.y*debugCanvas.height, 5, 0, 2*Math.PI);
+                debugCtx.fillStyle = '#00ffaa'; debugCtx.fill();
             }
             debugCtx.restore();
         }
 
-        // --- Animation Loop ---
+        // --- Loop ---
         function animate() {
             requestAnimationFrame(animate);
+            const delta = clock.getDelta();
 
-            // 平滑化
+            updateKeyboardInput();
+
             currentPos.x += (targetPos.x - currentPos.x) * CONFIG.smoothing;
             currentPos.y += (targetPos.y - currentPos.y) * CONFIG.smoothing;
 
-            // カメラ更新
             camera.position.x = currentPos.x;
             camera.position.y = currentPos.y;
             camera.lookAt(0, 0, -200);
 
-            // オブジェクト回転
-            floatingCubes.forEach(cube => {
-                cube.rotation.x += cube.userData.rotX;
-                cube.rotation.y += cube.userData.rotY;
-            });
-
-            // 部屋全体を少し逆位相で動かす（奥行き強調）
+            if (mixer && currentScene === 'dance') mixer.update(delta);
+            if (currentScene === 'box') {
+                boxObjects.forEach(cube => { cube.rotation.x += cube.userData.rotX; cube.rotation.y += cube.userData.rotY; });
+            }
             roomGroup.position.x = -currentPos.x * 0.2;
             roomGroup.position.y = -currentPos.y * 0.2;
-
+            if (youtubeObj) {
+                youtubeObj.position.x = roomGroup.position.x;
+                youtubeObj.position.y = roomGroup.position.y;
+            }
             renderer.render(scene, camera);
+            cssRenderer.render(scene, camera);
         }
 
         function onResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            cssRenderer.setSize(window.innerWidth, window.innerHeight);
         }
 
     </script>
