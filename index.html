@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Parallax World v6.0.0</title>
+    <title>Parallax World v7.1.0</title>
     <style>
-        /* * バージョン: v6.0.0
-         * 変更点: シネマモード(YouTube機能)を削除し、BOXとDANCEモードのみに軽量化
+        /* * バージョン: v7.1.0
+         * 変更点: ゲームモードにスコアアップアイテム（金色のクリスタル）を追加
          */
         body {
             margin: 0;
@@ -170,6 +170,85 @@
         }
         #reset-sensitivity:hover { color: white; background: #555; }
 
+        /* Game UI */
+        #game-ui {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+            pointer-events: auto;
+            z-index: 30;
+        }
+
+        #game-score-display {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #00ffaa;
+            display: none;
+            text-shadow: 0 0 10px rgba(0, 255, 170, 0.5);
+            transition: transform 0.1s, color 0.1s;
+        }
+        
+        /* スコア獲得時のアニメーション用クラス */
+        .score-pop {
+            transform: scale(1.5);
+            color: #ffff00 !important;
+        }
+
+        #game-message {
+            font-size: 2rem;
+            margin-bottom: 20px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+        }
+
+        #game-start-btn {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            background: linear-gradient(45deg, #ff0055, #ff5500);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(255, 0, 85, 0.6);
+            transition: transform 0.1s;
+        }
+        #game-start-btn:active { transform: scale(0.95); }
+
+        /* Damage Effect */
+        #damage-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: red;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 50;
+            transition: opacity 0.1s;
+        }
+        
+        /* Bonus Effect */
+        #bonus-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: gold;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 49;
+            transition: opacity 0.1s;
+        }
+
+        /* Start Screen */
         #start-overlay {
             position: absolute;
             top: 0;
@@ -238,12 +317,21 @@
 
     <!-- UI Layer -->
     <div id="ui-layer">
+        <!-- Damage/Bonus Flash -->
+        <div id="damage-overlay"></div>
+        <div id="bonus-overlay"></div>
+
+        <!-- Score -->
+        <div id="game-score-display">SCORE: 0</div>
+
+        <!-- Controls -->
         <div id="controls-container">
             <button id="settings-btn" onclick="toggleSettings()" title="Settings">⚙️</button>
             
             <div class="control-group" id="scene-group">
                 <button class="ctrl-btn active" onclick="switchScene('box')">📦 BOX</button>
                 <button class="ctrl-btn" onclick="switchScene('dance')">🤖 DANCE</button>
+                <button class="ctrl-btn" onclick="switchScene('game')">🎮 GAME</button>
             </div>
             
             <div class="control-group" id="mode-group">
@@ -263,6 +351,12 @@
             <button id="reset-sensitivity" onclick="resetSensitivity()">RESET</button>
         </div>
 
+        <!-- Game Start/Over UI -->
+        <div id="game-ui">
+            <div id="game-message">FACE DODGE</div>
+            <button id="game-start-btn">GAME START</button>
+        </div>
+
         <div id="camera-preview">
             <canvas id="debug-canvas"></canvas>
         </div>
@@ -273,7 +367,7 @@
         <div class="overlay-content">
             <h1>Parallax World</h1>
             <p style="color:#ccc; margin-bottom: 5px;">
-                箱庭とロボットダンス。<br>
+                箱庭、ダンス、そして<span style="color:#ff0055;">ゲーム</span>。<br>
                 奥行きのある空間体験を。
             </p>
             
@@ -291,7 +385,6 @@
     <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- CSS3DRendererは不要になったため削除 -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -299,8 +392,8 @@
 
     <script>
         /**
-         * バージョン: v6.0.0
-         * 機能: シネマモード削除による軽量化。Box/Danceモードのみサポート。
+         * バージョン: v7.1.0
+         * 機能: 「Face Dodge」ゲームモードにアイテム（ポイント加算）機能を追加。
          */
 
         // --- Configuration ---
@@ -316,7 +409,9 @@
             smoothing: 0.08,
             roomSize: 600,
             depth: 800,
-            keyboardSpeed: 5
+            keyboardSpeed: 5,
+            gameSpeed: 10, // 障害物・アイテムの移動速度
+            spawnRate: 60  // 障害物の出現間隔
         };
 
         // --- Global State ---
@@ -325,21 +420,31 @@
         let isStarted = false;
         
         let targetPos = { x: 0, y: 0 };
-        let currentPos = { x: 0, y: 0 };
+        let currentPos = { x: 0, y: 0 }; // カメラ位置 (自機位置)
 
         let virtualCursor = { x: 0, y: 0 }; 
         let keysPressed = {};
 
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
+        // Game State
+        let gameState = 'ready'; // 'ready', 'playing', 'gameover'
+        let score = 0;
+        let frameCount = 0;
+
         // Three.js
         let scene, camera, renderer;
-        let roomGroup;
         
+        // Groups
+        let roomGroup;   // Box/Dance用
+        let gameGroup;   // Game用
+
         // Objects
         let boxObjects = [];
         let robotModel = null;
         let mixer = null;
+        let enemies = []; // 障害物リスト
+        let items = [];   // アイテムリスト
         
         // Animations
         let robotActions = {};
@@ -359,8 +464,13 @@
             initThreeJS();
             setupInputEvents();
             setupSettingsUI();
+            setupGameUI();
 
             document.getElementById('main-start-btn').addEventListener('click', async () => {
+                if (currentMode === 'gyro' && isMobile) {
+                    await requestGyroPermission();
+                }
+
                 const overlay = document.getElementById('start-overlay');
                 const loading = document.getElementById('loading');
                 const btn = document.getElementById('main-start-btn');
@@ -374,8 +484,6 @@
                 overlay.style.opacity = '0';
                 setTimeout(()=> overlay.style.display = 'none', 500);
                 isStarted = true;
-
-                if (currentMode === 'gyro' && isMobile) requestGyroPermission();
                 
                 switchScene('box');
             });
@@ -431,6 +539,173 @@
             display.innerText = "100%";
         }
 
+        // --- Game Logic ---
+        function setupGameUI() {
+            const startBtn = document.getElementById('game-start-btn');
+            startBtn.addEventListener('click', startGame);
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            frameCount = 0;
+            document.getElementById('game-score-display').innerText = `SCORE: 0`;
+            document.getElementById('game-ui').style.display = 'none';
+            document.getElementById('game-score-display').style.display = 'block';
+            
+            // Clear enemies and items
+            enemies.forEach(e => gameGroup.remove(e));
+            enemies = [];
+            items.forEach(i => gameGroup.remove(i));
+            items = [];
+        }
+
+        function gameOver() {
+            gameState = 'gameover';
+            document.getElementById('game-message').innerText = "GAME OVER";
+            document.getElementById('game-start-btn').innerText = "RETRY";
+            document.getElementById('game-ui').style.display = 'block';
+            
+            // Damage Effect
+            const overlay = document.getElementById('damage-overlay');
+            overlay.style.opacity = '0.5';
+            setTimeout(() => overlay.style.opacity = '0', 200);
+        }
+
+        function getItemEffect() {
+            // アイテム獲得時のエフェクト
+            const overlay = document.getElementById('bonus-overlay');
+            const scoreDisplay = document.getElementById('game-score-display');
+            
+            overlay.style.opacity = '0.3';
+            scoreDisplay.classList.add('score-pop');
+            
+            setTimeout(() => {
+                overlay.style.opacity = '0';
+                scoreDisplay.classList.remove('score-pop');
+            }, 200);
+        }
+
+        function updateGame() {
+            if (gameState !== 'playing') return;
+
+            frameCount++;
+            
+            // Spawn Enemy (障害物)
+            if (frameCount % CONFIG.spawnRate === 0) {
+                spawnEnemy();
+                // 難易度上昇
+                if(frameCount % 600 === 0 && CONFIG.spawnRate > 20) CONFIG.spawnRate -= 5;
+            }
+
+            // Spawn Item (アイテム) - 障害物より頻度低め
+            // 障害物と被らないように少しタイミングをずらす、または出現位置を工夫する
+            if (frameCount % (CONFIG.spawnRate * 2.5) === 0) {
+                spawnItem();
+            }
+
+            const playerRadius = 30; 
+
+            // --- Update Enemies ---
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                enemy.position.z += CONFIG.gameSpeed;
+
+                // 衝突判定
+                if (enemy.position.z > 350 && enemy.position.z < 450) {
+                    const dx = enemy.position.x - currentPos.x;
+                    const dy = enemy.position.y - currentPos.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    if (dist < (playerRadius + 40)) { // 敵の半径約40
+                        gameOver();
+                        return;
+                    }
+                }
+
+                // 画面外へ
+                if (enemy.position.z > 500) {
+                    gameGroup.remove(enemy);
+                    enemies.splice(i, 1);
+                    score += 100; // 回避成功スコア
+                    document.getElementById('game-score-display').innerText = `SCORE: ${score}`;
+                }
+            }
+
+            // --- Update Items ---
+            for (let i = items.length - 1; i >= 0; i--) {
+                const item = items[i];
+                item.position.z += CONFIG.gameSpeed;
+                // アイテムは回転させる
+                item.rotation.x += 0.05;
+                item.rotation.y += 0.05;
+
+                // 取得判定
+                if (item.position.z > 350 && item.position.z < 450) {
+                    const dx = item.position.x - currentPos.x;
+                    const dy = item.position.y - currentPos.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    if (dist < (playerRadius + 30)) { // アイテム半径約30
+                        // Get Item!
+                        gameGroup.remove(item);
+                        items.splice(i, 1);
+                        score += 500; // ボーナススコア
+                        document.getElementById('game-score-display').innerText = `SCORE: ${score}`;
+                        getItemEffect();
+                        continue; // 次のアイテムへ
+                    }
+                }
+
+                // 画面外へ
+                if (item.position.z > 500) {
+                    gameGroup.remove(item);
+                    items.splice(i, 1);
+                }
+            }
+        }
+
+        function spawnEnemy() {
+            const size = 60 + Math.random() * 40;
+            const geo = new THREE.BoxGeometry(size, size, size);
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: 0xff0040, 
+                emissive: 0x440000,
+                shininess: 50
+            });
+            const enemy = new THREE.Mesh(geo, mat);
+            
+            enemy.position.x = (Math.random() - 0.5) * 500;
+            enemy.position.y = (Math.random() - 0.5) * 400;
+            enemy.position.z = -1000;
+            
+            enemy.rotation.x = Math.random() * Math.PI;
+            enemy.rotation.y = Math.random() * Math.PI;
+
+            gameGroup.add(enemy);
+            enemies.push(enemy);
+        }
+
+        function spawnItem() {
+            const size = 40;
+            // 正二十面体でクリスタルっぽく
+            const geo = new THREE.IcosahedronGeometry(25, 0); 
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: 0xffff00, 
+                emissive: 0x555500,
+                shininess: 100,
+                flatShading: true
+            });
+            const item = new THREE.Mesh(geo, mat);
+            
+            item.position.x = (Math.random() - 0.5) * 500;
+            item.position.y = (Math.random() - 0.5) * 400;
+            item.position.z = -1000;
+
+            gameGroup.add(item);
+            items.push(item);
+        }
+
         // --- Scene & Mode Switching ---
         function switchMode(mode) {
             if (mode === currentMode) return;
@@ -459,11 +734,29 @@
             const btns = document.querySelectorAll('#scene-group .ctrl-btn');
             if(sceneType === 'box') btns[0].classList.add('active');
             if(sceneType === 'dance') btns[1].classList.add('active');
+            if(sceneType === 'game') btns[2].classList.add('active');
 
-            if(roomGroup) roomGroup.visible = true; // Box/Danceは同じ部屋を使う
+            // Visibility Control
+            if (roomGroup) roomGroup.visible = (sceneType === 'box' || sceneType === 'dance');
+            if (gameGroup) gameGroup.visible = (sceneType === 'game');
 
             boxObjects.forEach(cube => cube.visible = (sceneType === 'box'));
             if (robotModel) robotModel.visible = (sceneType === 'dance');
+
+            // Game Mode Handling
+            const gameUI = document.getElementById('game-ui');
+            const scoreDisplay = document.getElementById('game-score-display');
+            if (sceneType === 'game') {
+                if (gameState === 'ready' || gameState === 'gameover') {
+                    gameUI.style.display = 'block';
+                } else {
+                    scoreDisplay.style.display = 'block';
+                }
+            } else {
+                gameUI.style.display = 'none';
+                scoreDisplay.style.display = 'none';
+                // Reset game if leaving? (Optional, keeping state for now)
+            }
         }
 
         // --- Three.js Setup ---
@@ -481,7 +774,8 @@
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000);
             camera.position.set(0, 0, 400);
 
-            createRoom();
+            createRoom();   // Box, Dance
+            createGameStage(); // Game
 
             const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
             scene.add(ambientLight);
@@ -553,7 +847,23 @@
             }
         }
 
-        // --- Robot (RobotExpressive) ---
+        // --- Game Stage ---
+        function createGameStage() {
+            gameGroup = new THREE.Group();
+            scene.add(gameGroup);
+            gameGroup.visible = false;
+
+            // ゲーム用のグリッド（サイバー空間風）
+            const grid = new THREE.GridHelper(2000, 40, 0x00ffaa, 0x003311);
+            grid.position.y = -300;
+            gameGroup.add(grid);
+            
+            const gridTop = new THREE.GridHelper(2000, 40, 0xff0055, 0x330011);
+            gridTop.position.y = 300;
+            gameGroup.add(gridTop);
+        }
+
+        // --- Robot ---
         function loadRobotModel() {
             return new Promise((resolve) => {
                 const loader = new THREE.GLTFLoader();
@@ -590,7 +900,6 @@
                         
                         nextAction.reset();
                         
-                        // Jumpのみスロー
                         if (randKey === 'Jump') {
                             nextAction.setEffectiveTimeScale(0.75);
                         } else {
@@ -669,10 +978,30 @@
         }
 
         function requestGyroPermission() {
-            if (typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function') {
-                DeviceOrientationEvent.requestPermission().then(r => { if(r==='granted') window.addEventListener('deviceorientation', handleGyro); });
-            } else window.addEventListener('deviceorientation', handleGyro);
+            return new Promise((resolve) => {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    // iOS 13+
+                    DeviceOrientationEvent.requestPermission()
+                        .then(response => {
+                            if (response === 'granted') {
+                                window.addEventListener('deviceorientation', handleGyro);
+                            } else {
+                                alert("ジャイロセンサーの許可が得られませんでした");
+                            }
+                            resolve(response);
+                        })
+                        .catch(err => {
+                            console.error(err);
+                            resolve(null);
+                        });
+                } else {
+                    // Non-iOS / Old Device
+                    window.addEventListener('deviceorientation', handleGyro);
+                    resolve('granted');
+                }
+            });
         }
+
         function handleGyro(e) {
             if (currentMode !== 'gyro') return;
             const x = e.gamma; const y = e.beta;
@@ -714,6 +1043,7 @@
 
             updateKeyboardInput();
 
+            // Smooth Camera Move
             currentPos.x += (targetPos.x - currentPos.x) * CONFIG.smoothing;
             currentPos.y += (targetPos.y - currentPos.y) * CONFIG.smoothing;
 
@@ -721,14 +1051,25 @@
             camera.position.y = currentPos.y;
             camera.lookAt(0, 0, -200);
 
-            if (mixer && currentScene === 'dance') mixer.update(delta);
-            if (currentScene === 'box') {
-                boxObjects.forEach(cube => { cube.rotation.x += cube.userData.rotX; cube.rotation.y += cube.userData.rotY; });
-            }
-            
-            if(roomGroup) {
-                roomGroup.position.x = -currentPos.x * 0.2;
-                roomGroup.position.y = -currentPos.y * 0.2;
+            // Game Logic
+            if (currentScene === 'game') {
+                updateGame();
+                // Game World Parallax (Auto scroll effect simulation)
+                if (gameGroup) {
+                    gameGroup.position.x = -currentPos.x * 0.1;
+                    gameGroup.position.y = -currentPos.y * 0.1;
+                }
+            } else {
+                // Other Scenes
+                if (mixer && currentScene === 'dance') mixer.update(delta);
+                if (currentScene === 'box') {
+                    boxObjects.forEach(cube => { cube.rotation.x += cube.userData.rotX; cube.rotation.y += cube.userData.rotY; });
+                }
+                
+                if(roomGroup) {
+                    roomGroup.position.x = -currentPos.x * 0.2;
+                    roomGroup.position.y = -currentPos.y * 0.2;
+                }
             }
 
             renderer.render(scene, camera);
